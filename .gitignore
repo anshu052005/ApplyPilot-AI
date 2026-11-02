@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+local_data/
+*.db
+*.sqlite
+*.sqlite3
+playwright-report/
+test-results/
+*.tsbuildinfo

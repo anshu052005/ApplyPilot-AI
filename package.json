@@ -1,0 +1,14 @@
+{
+  "name": "applypilot-ai",
+  "private": true,
+  "description": "ApplyPilot AI monorepo root. Dev tooling only.",
+  "scripts": {
+    "supabase": "supabase",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:status": "supabase status"
+  },
+  "devDependencies": {
+    "supabase": "2.34.3"
+  }
+}
