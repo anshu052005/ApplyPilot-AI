@@ -23,7 +23,7 @@ Read `C:\Users\user\.claude\plans\continue-async-ocean.md` for the approved arch
 - Migrate: `cd services/api && MIGRATION_DATABASE_URL=... python -m alembic upgrade head`
 - API unit tests: `cd services/api && .venv/Scripts/python -m pytest tests/unit`
 - API integration tests (stack required): `.venv/Scripts/python -m pytest tests/integration -rs`
-- Frontend: `cd apps/web && npm run typecheck && npm run build`
+- Frontend: `cd apps/web && npm test && npm run typecheck && npm run build`. Tests use Vitest + jsdom under `src/__tests__/`. The build needs the public `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `NEXT_PUBLIC_API_URL` in the environment (values from `npx supabase status -o env`; never the service-role key).
 - API dev server: `cd services/api && .venv/Scripts/python -m uvicorn app.main:app --reload`
 
 ## Local setup order (Supabase local stack)

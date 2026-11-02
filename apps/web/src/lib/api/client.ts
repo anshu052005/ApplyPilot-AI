@@ -10,8 +10,14 @@ export class ApiError extends Error {
   }
 }
 
-/** Calls the FastAPI backend with the current Supabase access token. Throws ApiError on failure. */
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export type ApiResponse<T> = { status: number; data: T | undefined };
+
+/**
+ * Calls the FastAPI backend with the current Supabase access token and returns the HTTP status with the body.
+ * Throws ApiError for any non-2xx response. Throws a TypeError when the network request itself fails.
+ * Use this when the status code carries meaning (for example 202 vs 204), as account deletion does.
+ */
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<ApiResponse<T>> {
   const { data } = await getSupabase().auth.getSession();
   const token = data.session?.access_token;
   if (!token) {
@@ -32,7 +38,14 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     throw new ApiError(response.status, typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`);
   }
   if (response.status === 204) {
-    return undefined as T;
+    return { status: 204, data: undefined };
   }
-  return (await response.json()) as T;
+  const body = (await response.json().catch(() => undefined)) as T | undefined;
+  return { status: response.status, data: body };
+}
+
+/** Calls the FastAPI backend and returns the parsed body. Throws ApiError on failure. */
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const { data } = await apiRequest<T>(path, init);
+  return data as T;
 }
