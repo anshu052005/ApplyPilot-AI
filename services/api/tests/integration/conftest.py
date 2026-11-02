@@ -2,14 +2,17 @@
 
 Required environment (see .env.example and README). The tests fail loudly when the stack is absent
 instead of passing silently:
-  SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET (optional, legacy HS256)
-  DATABASE_URL            runtime role app_api
-  MIGRATION_DATABASE_URL  owner role, used only for migrations and catalog checks
-  APP_API_DB_PASSWORD     password for app_api, embedded by the baseline migration
+  SUPABASE_URL, SUPABASE_ANON_KEY
+  SUPABASE_SIGNING_KEYS_PATH       private signing key file (admin tokens are minted from it)
+  SUPABASE_STORAGE_SIGNING_SECRET  mints short-lived Storage service tokens
+  DATABASE_URL                     runtime role app_api
+  MIGRATION_DATABASE_URL           owner role, used only for migrations and catalog checks
+  APP_API_DB_PASSWORD              password for app_api, embedded by the baseline migration
 """
 
 import os
 import subprocess
+import warnings
 import sys
 import uuid
 from collections.abc import Iterator
@@ -25,8 +28,8 @@ API_ROOT = Path(__file__).resolve().parents[2]
 REQUIRED_ENV = (
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "SUPABASE_ADMIN_JWT",
+    "SUPABASE_SIGNING_KEYS_PATH",
+    "SUPABASE_STORAGE_SIGNING_SECRET",
     "DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_API_DB_PASSWORD",
@@ -98,35 +101,20 @@ def _signup(email: str, password: str) -> TestUser:
 
 @pytest.fixture(scope="session")
 def _created_user_ids() -> Iterator[list[uuid.UUID]]:
+    """Tracks users created by the tests and removes them afterwards, with their stored objects."""
+    from app.adapters.supabase.factory import get_admin_client
+    from app.db.models.core import AppUser  # noqa: F401  (ensures mappers are configured)
+
     ids: list[uuid.UUID] = []
     yield ids
-    base = os.environ["SUPABASE_URL"].rstrip("/")
-    key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    with httpx.Client(timeout=15.0) as client:
-        for user_id in ids:
-            # Remove the user's stored objects first. Their metadata rows cascade with the user.
-            listed = client.post(
-                f"{base}/storage/v1/object/list/candidate-files",
-                headers=headers,
-                json={"prefix": f"{user_id}/", "limit": 1000, "offset": 0},
-            )
-            if listed.status_code == 200 and listed.json():
-                keys = [
-                    item["name"] if str(item["name"]).startswith(f"{user_id}/") else f"{user_id}/{item['name']}"
-                    for item in listed.json() if item.get("name")
-                ]
-                if keys:
-                    client.request(
-                        "DELETE",
-                        f"{base}/storage/v1/object/candidate-files",
-                        headers=headers,
-                        json={"prefixes": keys},
-                    )
-            client.delete(
-                f"{base}/auth/v1/admin/users/{user_id}",
-                headers={"apikey": key, "Authorization": f"Bearer {os.environ['SUPABASE_ADMIN_JWT']}"},
-            )
+    admin = get_admin_client()
+    for user_id in ids:
+        try:
+            for key in admin.list_object_keys("candidate-files", f"{user_id}/"):
+                admin.delete_object("candidate-files", key)
+            admin.delete_auth_user(user_id)
+        except Exception as exc:  # noqa: BLE001  (teardown must not hide the real test result)
+            warnings.warn(f"cleanup failed for a test user: {type(exc).__name__}", stacklevel=1)
 
 
 @pytest.fixture

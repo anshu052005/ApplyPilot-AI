@@ -1,13 +1,43 @@
+"""Account service: app record creation and the account deletion workflow.
+
+Deletion workflow (idempotent, resumable):
+1. Mark the account as deletion-requested. From now on data endpoints return 423.
+2. Storage: list every object under the user's prefix, union with the metadata rows, delete each object, then
+   delete its metadata row. A missing object counts as deleted.
+3. Verify Storage is empty for the user's prefix. Only then continue.
+4. Delete the Auth user. The foreign keys cascade to app_users, candidate_files and audit_logs.
+
+If any step fails, the request stops, the failure is recorded as a machine code, and the account stays in the
+deletion-pending state. A retry repeats the same steps. Nothing is reported as completed while personal files
+remain in Storage.
+"""
+
+from datetime import UTC, datetime
+from enum import Enum
+
+import httpx
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.adapters.supabase.admin import SupabaseAdminClient
-from app.db.models.core import AppUser
+from app.adapters.supabase.admin import AdminNotConfigured, AuthAdminError, StorageError, SupabaseAdminClient
+from app.db.models.core import AppUser, CandidateFile
 from app.shared.identity import CurrentUser
+
+CANDIDATE_BUCKET = "candidate-files"
 
 
 class AccountNoLongerExists(Exception):
     """The token is still signed and unexpired, but the auth user was deleted. Maps to HTTP 401."""
+
+
+class AccountDeletionPending(Exception):
+    """A data endpoint was called while deletion is pending. Maps to HTTP 423."""
+
+
+class DeletionOutcome(str, Enum):
+    COMPLETED = "completed"
+    PENDING = "pending"
 
 
 def get_or_create_app_user(db: Session, user: CurrentUser) -> AppUser:
@@ -27,10 +57,59 @@ def get_or_create_app_user(db: Session, user: CurrentUser) -> AppUser:
     return record
 
 
-def delete_account(user: CurrentUser, admin: SupabaseAdminClient) -> None:
-    """Deletes the Supabase auth user. The foreign key cascades to app_users and audit_logs.
+def require_account_not_pending(db: Session, user: CurrentUser) -> None:
+    record = db.get(AppUser, user.id)
+    if record is not None and record.deletion_requested_at is not None:
+        raise AccountDeletionPending()
 
-    The auth delete runs first. If it fails, nothing has changed and the request can be retried.
-    Storage object deletion is added in M3, when candidate files exist.
-    """
-    admin.delete_auth_user(user.id)
+
+def _purge_candidate_files(db: Session, user: CurrentUser, admin: SupabaseAdminClient) -> None:
+    prefix = f"{user.id}/"
+    rows = {row.object_key: row for row in db.scalars(select(CandidateFile).where(CandidateFile.user_id == user.id))}
+    stored = set(admin.list_object_keys(CANDIDATE_BUCKET, prefix))
+
+    for key in sorted(set(rows) | stored):
+        admin.delete_object(CANDIDATE_BUCKET, key)
+        row = rows.get(key)
+        if row is not None:
+            db.delete(row)
+            db.flush()
+
+    # Verify before anything irreversible happens. Storage must be empty for this user.
+    if admin.list_object_keys(CANDIDATE_BUCKET, prefix):
+        raise StorageError("objects remain after cleanup")
+
+
+def _record_failure(db: Session, record: AppUser, code: str) -> DeletionOutcome:
+    record.deletion_last_error = code
+    db.flush()
+    return DeletionOutcome.PENDING
+
+
+def request_account_deletion(db: Session, user: CurrentUser, admin: SupabaseAdminClient) -> DeletionOutcome:
+    record = get_or_create_app_user(db, user)
+    if record.deletion_requested_at is None:
+        record.deletion_requested_at = datetime.now(UTC)
+    # Commit the pending state before any destructive step. Other requests now see the lock, and a crash
+    # leaves the account locked rather than half-deleted.
+    db.commit()
+
+    try:
+        _purge_candidate_files(db, user, admin)
+    except (StorageError, httpx.HTTPError):
+        return _record_failure(db, record, "storage_cleanup_failed")
+    except AdminNotConfigured:
+        return _record_failure(db, record, "admin_not_configured")
+
+    # Commit the cleanup before the Auth delete. Otherwise the cascade from auth.users waits on row locks held
+    # by this transaction, which deadlocks until the gateway times out (observed as HTTP 504).
+    db.commit()
+
+    try:
+        admin.delete_auth_user(user.id)
+    except (AuthAdminError, httpx.HTTPError):
+        return _record_failure(db, record, "auth_delete_failed")
+    except AdminNotConfigured:
+        return _record_failure(db, record, "admin_not_configured")
+
+    return DeletionOutcome.COMPLETED

@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.adapters.supabase.admin import SupabaseAdminClient, StorageError
+from app.adapters.supabase.admin import StorageError, SupabaseAdminClient  # noqa: F401
 from app.core.config import get_settings
 from app.main import create_app
 
@@ -44,7 +44,9 @@ def client():
 
 @pytest.fixture
 def admin():
-    return SupabaseAdminClient(get_settings())
+    from app.adapters.supabase.factory import get_admin_client
+
+    return get_admin_client()
 
 
 @pytest.fixture
@@ -238,11 +240,14 @@ def test_owner_can_delete_their_file_and_the_object_is_removed(client, user_a, u
 
 
 def test_bucket_matches_the_declared_configuration(admin, storage_base):
-    settings = get_settings()
+    from app.adapters.supabase.factory import get_token_issuer
+
     response = httpx.get(
         f"{storage_base}/bucket/candidate-files",
-        headers={"apikey": settings.supabase_service_role_key.get_secret_value(),
-                 "Authorization": f"Bearer {settings.supabase_service_role_key.get_secret_value()}"},
+        headers={
+            "apikey": get_settings().supabase_anon_key,
+            "Authorization": f"Bearer {get_token_issuer().storage_admin_token()}",
+        },
         timeout=10.0,
     )
     assert response.status_code == 200, response.text

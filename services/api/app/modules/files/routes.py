@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.adapters.supabase.admin import SupabaseAdminClient
-from app.core.config import get_settings
+from app.adapters.supabase.factory import get_admin_client
 from app.db.models.core import CandidateFile
-from app.modules.auth.dependencies import get_current_user, get_user_db
+from app.modules.auth.dependencies import get_active_db, get_current_user
 from app.modules.files import service
 from app.modules.files.validation import MAX_FILE_BYTES
 from app.shared.identity import CurrentUser
@@ -30,9 +30,6 @@ class DownloadUrlOut(BaseModel):
     expires_in_seconds: int
 
 
-def get_admin_client() -> SupabaseAdminClient:
-    return SupabaseAdminClient(get_settings())
-
 
 def _to_out(record: CandidateFile) -> FileOut:
     return FileOut(
@@ -53,7 +50,7 @@ def _http_error(exc: service.UnsupportedFile) -> HTTPException:
 def upload_file(
     file: UploadFile = File(...),
     user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_user_db),
+    db: Session = Depends(get_active_db),
     admin: SupabaseAdminClient = Depends(get_admin_client),
 ) -> FileOut:
     # Read one byte past the limit, so an oversize upload is detected without loading it all.
@@ -80,7 +77,7 @@ def upload_file(
 def get_file(
     file_id: uuid.UUID,
     user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_user_db),
+    db: Session = Depends(get_active_db),
 ) -> FileOut:
     try:
         return _to_out(service.get_owned_file(db, user, file_id))
@@ -92,7 +89,7 @@ def get_file(
 def create_download_url(
     file_id: uuid.UUID,
     user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_user_db),
+    db: Session = Depends(get_active_db),
     admin: SupabaseAdminClient = Depends(get_admin_client),
 ) -> DownloadUrlOut:
     try:
@@ -108,7 +105,7 @@ def create_download_url(
 def delete_file(
     file_id: uuid.UUID,
     user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_user_db),
+    db: Session = Depends(get_active_db),
     admin: SupabaseAdminClient = Depends(get_admin_client),
 ) -> Response:
     try:

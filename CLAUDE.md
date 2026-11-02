@@ -32,9 +32,8 @@ Read `C:\Users\user\.claude\plans\continue-async-ocean.md` for the approved arch
 3. `services/api/.venv/Scripts/python scripts/local/generate_signing_key.py` creates `supabase/signing_keys.json` (private, gitignored, never overwritten).
 4. Restart the stack with `npx supabase stop` then `npx supabase start` when the signing key changes (stop keeps data).
 5. Copy `.env.example` to `.env` and fill the values from `npx supabase status -o env`. Leave `SUPABASE_JWT_SECRET` empty.
-6. `services/api/.venv/Scripts/python scripts/local/mint_admin_jwt.py` writes `SUPABASE_ADMIN_JWT` into `.env`.
-7. `services/api/.venv/Scripts/python scripts/local/provision_storage.py` creates or updates the buckets declared in `supabase/config.toml`. Idempotent.
-8. `cd services/api && python -m alembic upgrade head` (with `MIGRATION_DATABASE_URL` and `APP_API_DB_PASSWORD` set).
+6. `services/api/.venv/Scripts/python scripts/local/provision_storage.py` creates or updates the buckets declared in `supabase/config.toml`. Idempotent.
+7. `cd services/api && python -m alembic upgrade head` (with `MIGRATION_DATABASE_URL` and `APP_API_DB_PASSWORD` set).
 
 ## Pinned versions and why
 - Supabase CLI `2.34.3` (project-local via `npx`). Chosen to be at least two weeks old at install. It does NOT create storage buckets from config.toml, so `provision_storage.py` does.
@@ -42,10 +41,11 @@ Read `C:\Users\user\.claude\plans\continue-async-ocean.md` for the approved arch
 - Python 3.11.9. Dependencies pinned in `services/api/requirements*.txt`.
 
 ## Auth and signing decisions
-- User tokens are ES256, signed by the local Auth service with `supabase/signing_keys.json`. FastAPI verifies them against the JWKS endpoint via `app/modules/auth/jwks.py` (throttled refresh, rotation, fail-closed after max stale).
+- User tokens are ES256, signed by the local Auth service with `supabase/signing_keys.json`. FastAPI verifies them through the JWKS endpoint (`app/modules/auth/jwks.py`): throttled refresh, rotation, fail-closed after max stale, rejects private key material.
 - The signing key needs `key_ops: ["sign", "verify"]`. Without it local GoTrue exits with "no signing key detected".
-- GoTrue's admin API accepts only ES256 service_role tokens once asymmetric signing is on. Storage accepts only the HS256 service key. Hence two credentials: `SUPABASE_SERVICE_ROLE_KEY` (Storage, apikey) and `SUPABASE_ADMIN_JWT` (GoTrue admin).
-- Production: configure asymmetric signing keys in the hosted project and point `SUPABASE_URL` at it. Confirm the admin credential model for the hosted project before deploying (open item).
+- Local GoTrue (v2.178) supports ONE signing key. A live overlap window cannot be produced locally. Rotation is a replacement: `scripts/local/rotate_signing_key.py --confirm`, then restart. The old tokens are then revoked.
+- No static service-role key. Admin access uses short-lived tokens minted on demand (`app/adapters/supabase/admin_tokens.py`): ES256 service_role for Auth admin, HS256 service_role for Storage. Lifetime 15 minutes, renewed 5 minutes before expiry, kept in memory only, never written or logged.
+- The ES256 admin token is signed with the same key as user tokens. Whoever holds the signing key can mint any user's token. Locally the key is on disk. In production it must come from the secret store, and the production admin mechanism must be confirmed before deployment (open item). Full analysis and the production design: `docs/adr/0002-signing-keys-and-admin-auth.md`.
 
 ## Storage decisions
 - Bucket `candidate-files`: private, 10 MiB, PDF and DOCX only. Declared in `supabase/config.toml`, created by `provision_storage.py`.

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db_for_user
+from app.modules.auth import service as account_service
 from app.modules.auth.jwks import JwksCache, http_document_fetcher
 from app.modules.auth.jwt_verifier import SupabaseJwtVerifier, TokenError
 from app.shared.identity import CurrentUser
@@ -52,3 +53,18 @@ def get_current_user(
 def get_user_db(user: CurrentUser = Depends(get_current_user)) -> Iterator[Session]:
     """Database session bound to the verified user. All application queries use this dependency."""
     yield from get_db_for_user(user.id)
+
+
+def get_active_db(
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_user_db),
+) -> Session:
+    """Session for data endpoints. Locks the account (HTTP 423) while its deletion is pending."""
+    try:
+        account_service.require_account_not_pending(db, user)
+    except account_service.AccountDeletionPending:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Account deletion is in progress. Your data is locked until it completes.",
+        ) from None
+    return db

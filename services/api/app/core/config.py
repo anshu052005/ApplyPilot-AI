@@ -1,6 +1,7 @@
 """Environment-based configuration. Secrets are read from env only and never logged."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, computed_field
@@ -17,12 +18,13 @@ class Settings(BaseSettings):
     supabase_url: str = Field(default="http://127.0.0.1:54321")
     # Legacy HS256 secret. Optional. Only used when the project has not moved to asymmetric signing keys.
     supabase_jwt_secret: SecretStr | None = None
-    # Server-only admin key. Used by the Supabase admin adapter for account deletion and storage signing.
-    # Must never be sent to the frontend or the browser worker.
-    supabase_service_role_key: SecretStr | None = None
-    # Admin bearer for GoTrue's admin API. With asymmetric signing the admin API accepts only ES256 service-role
-    # tokens, so this is a service_role JWT signed by the project's signing key. Same secrecy rules as the key above.
-    supabase_admin_jwt: SecretStr | None = None
+    # Public anon key. Sent as the `apikey` header on admin calls. Not a secret.
+    supabase_anon_key: str | None = None
+    # Path to the private signing key file (JWK array). Read only by the admin token issuer. Mounted by the
+    # secret store in production. Never sent to clients, logs, or the browser worker.
+    supabase_signing_keys_path: Path | None = None
+    # Storage verifies HS256 only. This secret mints short-lived Storage service tokens on the server.
+    supabase_storage_signing_secret: SecretStr | None = None
 
     # Runtime database role `app_api`. Subject to RLS. Never a superuser, never BYPASSRLS.
     database_url: SecretStr = Field(

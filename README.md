@@ -18,7 +18,6 @@ npm run db:start
 services/api/.venv/Scripts/python scripts/local/generate_signing_key.py   # ES256 signing key (gitignored)
 npx supabase stop && npx supabase start                                          # pick up the signing key
 npx supabase status -o env        # copy the values into .env (leave SUPABASE_JWT_SECRET empty)
-services/api/.venv/Scripts/python scripts/local/mint_admin_jwt.py                 # adds SUPABASE_ADMIN_JWT to .env
 services/api/.venv/Scripts/python scripts/local/provision_storage.py              # creates the candidate-files bucket
 
 # 2. API

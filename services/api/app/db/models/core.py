@@ -21,6 +21,10 @@ class AppUser(Base):
     )
     email: Mapped[str | None] = mapped_column(String(320))
     display_name: Mapped[str | None] = mapped_column(String(200))
+    # Set when the owner requests deletion. While set, data endpoints are locked (HTTP 423).
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Machine code for the last failed deletion step. Never personal data.
+    deletion_last_error: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

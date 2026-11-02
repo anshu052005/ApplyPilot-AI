@@ -7,15 +7,18 @@ config.toml, so the declaration stays the single source of truth.
 Run after `npx supabase start`:
     services/api/.venv/Scripts/python scripts/local/provision_storage.py
 
-It needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from the local, gitignored .env. Those values are never printed.
+It needs SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_STORAGE_SIGNING_SECRET from the local, gitignored .env.
+It mints a 15-minute service token per run. No static service-role key is used. Nothing secret is printed.
 """
 
 import re
 import sys
+import time
 import tomllib
 from pathlib import Path
 
 import httpx
+import jwt
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "supabase" / "config.toml"
@@ -62,8 +65,13 @@ def main() -> int:
         return 1
     env = read_env(ENV_FILE)
     base = env["SUPABASE_URL"].rstrip("/")
-    key = env["SUPABASE_SERVICE_ROLE_KEY"]
-    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    now = int(time.time())
+    token = jwt.encode(
+        {"iss": "supabase-demo", "role": "service_role", "iat": now, "exp": now + 900},
+        env["SUPABASE_STORAGE_SIGNING_SECRET"],
+        algorithm="HS256",
+    )
+    headers = {"apikey": env["SUPABASE_ANON_KEY"], "Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     buckets = desired_buckets()
     if not buckets:
