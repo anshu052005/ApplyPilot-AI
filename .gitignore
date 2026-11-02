@@ -1,15 +1,135 @@
-.venv/
-__pycache__/
-*.py[cod]
+# ============================================================
+# ApplyPilot AI .gitignore
+# Principle: if it can contain a secret or personal data, it is ignored.
+# Only *.example templates with placeholders are tracked.
+# ============================================================
+
+# ---- Secrets and credentials (never commit) ----
 .env
 .env.*
 !.env.example
-node_modules/
-.next/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+id_rsa*
+id_ed25519*
+*.keystore
+*.jks
+credentials*.json
+service-account*.json
+secrets/
+.secrets/
+signing_keys.json
+supabase/signing_keys.json
+.npmrc
+.pypirc
+.netrc
+
+# ---- Browser sessions, cookies and worker state (never commit) ----
+storage_state*.json
+*.storage_state.json
+browser_sessions/
+sessions/
+cookies*.json
+cookies*.txt
+.playwright/
+playwright/.cache/
+worker_data/
+worker-data/
+
+# ---- Candidate data and generated documents (personal information) ----
+uploads/
+uploaded_files/
 local_data/
+generated/
+generated_documents/
+resumes/
+output/
+exports/
+*.resume.json
+*.resume.docx
+*.resume.pdf
+candidate*.json
+profile*.json
+!services/api/tests/fixtures/
+!services/api/tests/**/fixtures/
+screenshots/
+*.screenshot.png
+debug-snapshots/
+data/
+candidate_files/
+# Candidate documents anywhere in the repo. Synthetic test fixtures are re-included below.
+*.pdf
+*.docx
+*.doc
+!**/tests/fixtures/**
+!**/tests/**/fixtures/**
+
+# ---- Databases and local data stores ----
 *.db
 *.sqlite
 *.sqlite3
+*.sql.gz
+*.dump
+*.backup
+pgdata/
+postgres-data/
+supabase/.temp/
+supabase/.branches/
+
+# ---- Logs and crash reports ----
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pytest_cache/
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+
+# ---- Python ----
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# ---- Node / Next.js ----
+node_modules/
+.next/
+out/
+next-env.d.ts.bak
+*.tsbuildinfo
+.turbo/
+.vercel/
+
+# ---- Test artifacts ----
 playwright-report/
 test-results/
-*.tsbuildinfo
+blob-report/
+
+# ---- Editors and OS ----
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# ---- Claude Code local state (per-machine, may contain paths and memory) ----
+.claude/
+CLAUDE.local.md
