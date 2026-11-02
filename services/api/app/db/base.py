@@ -17,4 +17,4 @@ class Base(DeclarativeBase):
 
 # Tables whose rows belong to a single user. Every one of them must have RLS enabled and forced.
 # tests/integration/test_rls_catalog.py checks this list against the live database catalog.
-USER_OWNED_TABLES: tuple[str, ...] = ("app_users", "audit_logs")
+USER_OWNED_TABLES: tuple[str, ...] = ("app_users", "audit_logs", "candidate_files")

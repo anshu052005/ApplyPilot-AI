@@ -13,8 +13,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import jwt
-from jwt import PyJWKClient
-from jwt.exceptions import PyJWKClientError
 
 ASYMMETRIC_ALGORITHMS = ["RS256", "ES256"]
 LEGACY_ALGORITHMS = ["HS256"]
@@ -34,19 +32,6 @@ class VerifiedClaims:
 
 
 KeyResolver = Callable[[str], Any]
-
-
-def jwks_key_resolver(jwks_url: str) -> KeyResolver:
-    """Returns a resolver that fetches signing keys by `kid`. PyJWKClient refreshes on an unknown kid."""
-    client = PyJWKClient(jwks_url, cache_keys=True, lifespan=300)
-
-    def resolve(kid: str) -> Any:
-        try:
-            return client.get_signing_key(kid).key
-        except PyJWKClientError as exc:
-            raise TokenError("unknown signing key") from exc
-
-    return resolve
 
 
 class SupabaseJwtVerifier:

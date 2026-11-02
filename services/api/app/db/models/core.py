@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.models import supabase_auth  # noqa: F401  (registers auth.users for the foreign key)
 
 
 class AppUser(Base):
@@ -38,4 +39,22 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100))
     target: Mapped[str | None] = mapped_column(String(200))
     details: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CandidateFile(Base):
+    """Metadata for a candidate document. The bytes live in the private `candidate-files` bucket."""
+
+    __tablename__ = "candidate_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("app_users.id", ondelete="CASCADE"), index=True
+    )
+    bucket: Mapped[str] = mapped_column(String(63), server_default="candidate-files")
+    object_key: Mapped[str] = mapped_column(String(300), unique=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    mime_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

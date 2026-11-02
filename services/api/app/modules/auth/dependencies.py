@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db_for_user
-from app.modules.auth.jwt_verifier import SupabaseJwtVerifier, TokenError, jwks_key_resolver
+from app.modules.auth.jwks import JwksCache, http_document_fetcher
+from app.modules.auth.jwt_verifier import SupabaseJwtVerifier, TokenError
 from app.shared.identity import CurrentUser
 
 _bearer = HTTPBearer(auto_error=False)
@@ -19,12 +20,17 @@ _UNAUTHORIZED = HTTPException(
 
 
 @lru_cache
+def get_jwks_cache() -> JwksCache:
+    return JwksCache(http_document_fetcher(get_settings().jwks_url))
+
+
+@lru_cache
 def get_verifier() -> SupabaseJwtVerifier:
     settings = get_settings()
     secret = settings.supabase_jwt_secret.get_secret_value() if settings.supabase_jwt_secret else None
     return SupabaseJwtVerifier(
         issuer=settings.jwt_issuer,
-        key_resolver=jwks_key_resolver(settings.jwks_url),
+        key_resolver=get_jwks_cache().key_for,
         legacy_hs256_secret=secret,
     )
 

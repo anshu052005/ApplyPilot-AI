@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Server-only admin key. Used by the Supabase admin adapter for account deletion and storage signing.
     # Must never be sent to the frontend or the browser worker.
     supabase_service_role_key: SecretStr | None = None
+    # Admin bearer for GoTrue's admin API. With asymmetric signing the admin API accepts only ES256 service-role
+    # tokens, so this is a service_role JWT signed by the project's signing key. Same secrecy rules as the key above.
+    supabase_admin_jwt: SecretStr | None = None
 
     # Runtime database role `app_api`. Subject to RLS. Never a superuser, never BYPASSRLS.
     database_url: SecretStr = Field(

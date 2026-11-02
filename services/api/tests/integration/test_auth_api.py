@@ -1,5 +1,6 @@
 """End-to-end auth through the API: real Supabase-issued tokens, real database, real RLS."""
 
+import os
 import uuid
 
 import pytest
@@ -80,3 +81,50 @@ def test_old_token_is_refused_after_account_deletion(client, user_a):
     response = client.get("/api/v1/auth/me", headers=_auth(user_a))
     assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
+
+
+# ---- asymmetric signing (JWKS) ----
+
+
+def test_issued_tokens_are_asymmetric_and_accepted_through_jwks(client, user_a):
+    import jwt as pyjwt
+
+    header = pyjwt.get_unverified_header(user_a.access_token)
+    assert header["alg"] == "ES256"
+    assert header.get("kid"), "asymmetric tokens must carry a kid so the verifier can pick the public key"
+    assert client.get("/api/v1/auth/me", headers=_auth(user_a)).status_code == 200
+
+
+def test_jwks_endpoint_publishes_only_public_keys():
+    import os
+
+    import httpx
+
+    base = os.environ["SUPABASE_URL"].rstrip("/")
+    body = httpx.get(f"{base}/auth/v1/.well-known/jwks.json", timeout=10.0).json()
+    assert body["keys"], "JWKS must publish at least one key"
+    for key in body["keys"]:
+        assert not ({"d", "p", "q", "dp", "dq", "qi", "k"} & key.keys()), "JWKS published private key material"
+
+
+def test_hs256_token_signed_with_a_guessed_secret_is_refused(client, user_a):
+    """Legacy HS256 is not configured for this API, so a token signed with any shared secret must be rejected."""
+    import time
+
+    import jwt as pyjwt
+
+    now = int(time.time())
+    forged = pyjwt.encode(
+        {
+            "sub": str(user_a.id),
+            "aud": "authenticated",
+            "iss": os.environ["SUPABASE_URL"].rstrip("/") + "/auth/v1",
+            "iat": now,
+            "exp": now + 600,
+            "role": "authenticated",
+        },
+        "guessed-secret-value-of-sufficient-length-123456",
+        algorithm="HS256",
+    )
+    response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {forged}"})
+    assert response.status_code == 401

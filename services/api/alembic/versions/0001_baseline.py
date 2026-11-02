@@ -58,7 +58,9 @@ def upgrade() -> None:
         $$;
         """
     )
-    op.execute(f"ALTER ROLE app_api WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}';")
+    # Only LOGIN and PASSWORD are changed. The role was created with NOSUPERUSER and NOBYPASSRLS above.
+    # Restating NOSUPERUSER here would fail on hosted Postgres, where the migration role is not a superuser.
+    op.execute(f"ALTER ROLE app_api WITH LOGIN PASSWORD '{password}';")
 
     # Identity function used by every policy. Fails closed: no claim means NULL, which matches no row.
     op.execute(

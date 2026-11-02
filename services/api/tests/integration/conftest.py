@@ -26,6 +26,7 @@ REQUIRED_ENV = (
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_ADMIN_JWT",
     "DATABASE_URL",
     "MIGRATION_DATABASE_URL",
     "APP_API_DB_PASSWORD",
@@ -101,11 +102,30 @@ def _created_user_ids() -> Iterator[list[uuid.UUID]]:
     yield ids
     base = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     with httpx.Client(timeout=15.0) as client:
         for user_id in ids:
+            # Remove the user's stored objects first. Their metadata rows cascade with the user.
+            listed = client.post(
+                f"{base}/storage/v1/object/list/candidate-files",
+                headers=headers,
+                json={"prefix": f"{user_id}/", "limit": 1000, "offset": 0},
+            )
+            if listed.status_code == 200 and listed.json():
+                keys = [
+                    item["name"] if str(item["name"]).startswith(f"{user_id}/") else f"{user_id}/{item['name']}"
+                    for item in listed.json() if item.get("name")
+                ]
+                if keys:
+                    client.request(
+                        "DELETE",
+                        f"{base}/storage/v1/object/candidate-files",
+                        headers=headers,
+                        json={"prefixes": keys},
+                    )
             client.delete(
                 f"{base}/auth/v1/admin/users/{user_id}",
-                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                headers={"apikey": key, "Authorization": f"Bearer {os.environ['SUPABASE_ADMIN_JWT']}"},
             )
 
 
